@@ -28,6 +28,8 @@ typedef struct _OSHash {
     OSHashNode **table;
 } OSHash;
 
+typedef int (*OSHash_Function)(void*, void*);
+
 /* Prototypes */
 
 /* Create and initialize hash */
@@ -35,6 +37,12 @@ OSHash *OSHash_Create(void);
 
 /* Free the memory used by the hash */
 void *OSHash_Free(OSHash *self) __attribute__((nonnull));
+
+/** void OSHash_ForEach(OSHash *self, OSHash_Function fun)
+ *  Iterate over hash elements and call fun on it
+ *  If fun returns '-1', the element is removed
+ */
+void OSHash_ForEach(OSHash *self, OSHash_Function fun);
 
 /* Returns 0 on error
  * Returns 1 on duplicated key (not added)

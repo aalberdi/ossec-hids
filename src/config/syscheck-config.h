@@ -28,6 +28,12 @@
 
 #include "os_regex/os_regex.h"
 
+typedef struct _dbrecord
+{
+	unsigned char scanned;
+	char alert_msg[916];
+}dbrecord;
+
 typedef struct _rtfim {
     int fd;
     OSHash *dirtb;

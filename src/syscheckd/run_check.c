@@ -40,6 +40,16 @@ int send_syscheck_msg(const char *msg)
     return (0);
 }
 
+/* Send a syscheck file deletion message.
+ */
+int send_syscheck_deletion_msg(const char *file_name)
+{
+	char alert_msg[PATH_MAX + 4];
+	snprintf(alert_msg, PATH_MAX + 4, "-1 %s", file_name);
+
+	return (send_syscheck_msg(alert_msg));
+}
+
 /* Send a message related to rootcheck change/addition */
 int send_rootcheck_msg(const char *msg)
 {
@@ -54,6 +64,33 @@ int send_rootcheck_msg(const char *msg)
         SendMSG(syscheck.queue, msg, ROOTCHECK, ROOTCHECK_MQ);
     }
     return (0);
+}
+
+/* Mark a record as unscanned
+*/
+int mark_as_unscanned(dbrecord *record)
+{
+	record->scanned = 0;
+	return (0);
+}
+
+/* Check if db record was deleted
+ */
+int check_if_deleted(char *key, dbrecord *record)
+{
+	if (record->scanned)
+		record->scanned = 0;
+	else
+	{
+		send_syscheck_deletion_msg(key);
+
+		free(key);
+		free(record);
+
+		return (-1);
+	}
+
+	return (0);
 }
 
 /* Send syscheck db to the server */
@@ -75,6 +112,12 @@ static void send_sk_db()
     if (syscheck.dir[0]) {
         merror("%s: INFO: Ending syscheck scan (forwarding database).", ARGV0);
         send_rootcheck_msg("Ending syscheck scan.");
+	
+	/* Sending database completed message */
+	send_syscheck_msg(HC_SK_DB_COMPLETED);
+	debug2("%s: DEBUG: Sending database completed message.", ARGV0);
+
+	OSHash_ForEach(syscheck.fp, (OSHash_Function) &mark_as_unscanned);
     }
 }
 
@@ -253,6 +296,7 @@ void start_daemon()
             if (syscheck.dir[0]) {
                 merror("%s: INFO: Ending syscheck scan.", ARGV0);
                 send_rootcheck_msg("Ending syscheck scan.");
+		OSHash_ForEach(syscheck.fp, (OSHash_Function) &check_if_deleted);
             }
 
             /* Send database completed message */
@@ -304,7 +348,7 @@ void start_daemon()
 /* Read file information and return a pointer to the checksum */
 int c_read_file(const char *file_name, const char *oldsum, char *newsum)
 {
-    int size = 0, perm = 0, owner = 0, group = 0, md5sum = 0, sha1sum = 0;
+    int md5sum = 0, sha1sum = 0;
     struct stat statbuf;
     os_md5 mf_sum;
     os_sha1 sf_sum;
@@ -320,49 +364,8 @@ int c_read_file(const char *file_name, const char *oldsum, char *newsum)
     if (lstat(file_name, &statbuf) < 0)
 #endif
     {
-        char alert_msg[PATH_MAX+4];
-
-        alert_msg[PATH_MAX + 3] = '\0';
-        snprintf(alert_msg, PATH_MAX + 4, "-1 %s", file_name);
-        send_syscheck_msg(alert_msg);
-
+	send_syscheck_deletion_msg(file_name);
         return (-1);
-    }
-
-    /* Get the old sum values */
-
-    /* size */
-    if (oldsum[0] == '+') {
-        size = 1;
-    }
-
-    /* perm */
-    if (oldsum[1] == '+') {
-        perm = 1;
-    }
-
-    /* owner */
-    if (oldsum[2] == '+') {
-        owner = 1;
-    }
-
-    /* group */
-    if (oldsum[3] == '+') {
-        group = 1;
-    }
-
-    /* md5 sum */
-    if (oldsum[4] == '+') {
-        md5sum = 1;
-    }
-
-    /* sha1 sum */
-    if (oldsum[5] == '+') {
-        sha1sum = 1;
-    } else if (oldsum[5] == 's') {
-        sha1sum = 1;
-    } else if (oldsum[5] == 'n') {
-        sha1sum = 0;
     }
 
     /* Generate new checksum */
@@ -397,12 +400,12 @@ int c_read_file(const char *file_name, const char *oldsum, char *newsum)
     newsum[0] = '\0';
     newsum[255] = '\0';
     snprintf(newsum, 255, "%ld:%d:%d:%d:%s:%s",
-             size == 0 ? 0 : (long)statbuf.st_size,
-             perm == 0 ? 0 : (int)statbuf.st_mode,
-             owner == 0 ? 0 : (int)statbuf.st_uid,
-             group == 0 ? 0 : (int)statbuf.st_gid,
-             md5sum   == 0 ? "xxx" : mf_sum,
-             sha1sum  == 0 ? "xxx" : sf_sum);
+		oldsum[0] == '+' ? (long)statbuf.st_size : 0,
+		oldsum[1] == '+' ? (int)statbuf.st_mode : 0,
+		oldsum[2] == '+' ? (int)statbuf.st_uid : 0,
+		oldsum[3] == '+' ? (int)statbuf.st_gid : 0,
+             	oldsum[4] == '+' ?  mf_sum : "xxx",
+             	oldsum[5] == '+' || oldsum[5] == 's' ? sf_sum : "xxx");
 
     return (0);
 }

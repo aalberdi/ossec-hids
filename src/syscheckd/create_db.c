@@ -24,7 +24,7 @@ static int __counter = 0;
 /* Read and generate the integrity data of a file */
 static int read_file(const char *file_name, int opts, OSMatch *restriction)
 {
-    char *buf;
+    dbrecord *record;
     char sha1s = '+';
     struct stat statbuf;
 
@@ -147,10 +147,8 @@ static int read_file(const char *file_name, int opts, OSMatch *restriction)
             }
         }
 
-        buf = (char *) OSHash_Get(syscheck.fp, file_name);
-        if (!buf) {
-            char alert_msg[916 + 1];    /* to accommodate a long */
-            alert_msg[916] = '\0';
+        record = (dbrecord *) OSHash_Get(syscheck.fp, file_name);
+        if (!record) {
 
             if (opts & CHECK_SEECHANGES) {
                 char *alertdump = seechanges_addfile(file_name);
@@ -159,8 +157,10 @@ static int read_file(const char *file_name, int opts, OSMatch *restriction)
                     alertdump = NULL;
                 }
             }
-
-            snprintf(alert_msg, 916, "%c%c%c%c%c%c%ld:%d:%d:%d:%s:%s",
+	    if (!(record = calloc(1, sizeof (dbrecord))))
+		     merror("%s: ERROR: Unable to add file to db: %s", ARGV0, file_name);
+	    record->scanned = 1;
+            snprintf(record->alert_msg, 916, "%c%c%c%c%c%c%ld:%d:%d:%d:%s:%s",
                      opts & CHECK_SIZE ? '+' : '-',
                      opts & CHECK_PERM ? '+' : '-',
                      opts & CHECK_OWNER ? '+' : '-',
@@ -174,14 +174,14 @@ static int read_file(const char *file_name, int opts, OSMatch *restriction)
                      opts & CHECK_MD5SUM ? mf_sum : "xxx",
                      opts & CHECK_SHA1SUM ? sf_sum : "xxx");
 
-            if (OSHash_Add(syscheck.fp, file_name, strdup(alert_msg)) <= 0) {
+            if (OSHash_Add(syscheck.fp, file_name, record) <= 0) {
                 merror("%s: ERROR: Unable to add file to db: %s", ARGV0, file_name);
             }
 
             /* Send the new checksum to the analysis server */
-            alert_msg[916] = '\0';
+            record->alert_msg[916] = '\0';
 
-            snprintf(alert_msg, 916, "%ld:%d:%d:%d:%s:%s %s",
+            snprintf(record->alert_msg, 916, "%ld:%d:%d:%d:%s:%s %s",
                      opts & CHECK_SIZE ? (long)statbuf.st_size : 0,
                      opts & CHECK_PERM ? (int)statbuf.st_mode : 0,
                      opts & CHECK_OWNER ? (int)statbuf.st_uid : 0,
@@ -189,38 +189,36 @@ static int read_file(const char *file_name, int opts, OSMatch *restriction)
                      opts & CHECK_MD5SUM ? mf_sum : "xxx",
                      opts & CHECK_SHA1SUM ? sf_sum : "xxx",
                      file_name);
-            send_syscheck_msg(alert_msg);
+            send_syscheck_msg(record->alert_msg);
         } else {
-            char alert_msg[OS_MAXSTR + 1];
+	    record->scanned = 1;
+
             char c_sum[256 + 2];
 
             c_sum[0] = '\0';
             c_sum[256] = '\0';
-            alert_msg[0] = '\0';
-            alert_msg[OS_MAXSTR] = '\0';
 
             /* If it returns < 0, we have already alerted */
-            if (c_read_file(file_name, buf, c_sum) < 0) {
+            if (c_read_file(file_name, record->alert_msg, c_sum) < 0) {
                 return (0);
             }
 
-            if (strcmp(c_sum, buf + 6) != 0) {
+            if (strcmp(c_sum, record->alert_msg + 6) != 0) {
                 /* Send the new checksum to the analysis server */
                 char *fullalert = NULL;
-                alert_msg[OS_MAXSTR] = '\0';
-                if (buf[5] == 's' || buf[5] == 'n') {
+                if (record->alert_msg[5] == 's' || record->alert_msg[5] == 'n') {
                     fullalert = seechanges_addfile(file_name);
                     if (fullalert) {
-                        snprintf(alert_msg, OS_MAXSTR, "%s %s\n%s", c_sum, file_name, fullalert);
+                        snprintf(record->alert_msg, OS_MAXSTR, "%s %s\n%s", c_sum, file_name, fullalert);
                         free(fullalert);
                         fullalert = NULL;
                     } else {
-                        snprintf(alert_msg, 916, "%s %s", c_sum, file_name);
+                        snprintf(record->alert_msg, 916, "%s %s", c_sum, file_name);
                     }
                 } else {
-                    snprintf(alert_msg, 916, "%s %s", c_sum, file_name);
+                    snprintf(record->alert_msg, 916, "%s %s", c_sum, file_name);
                 }
-                send_syscheck_msg(alert_msg);
+                send_syscheck_msg(record->alert_msg);
             }
         }
 
