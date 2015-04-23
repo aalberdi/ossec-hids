@@ -59,17 +59,17 @@ static int read_file(const char *file_name, int opts, OSMatch *restriction)
     if (lstat(file_name, &statbuf) < 0)
 #endif
     {
-        if(errno == ENOTDIR){
-		/*Deletion message sending*/
-		char alert_msg[PATH_MAX+4];
-		alert_msg[PATH_MAX + 3] = '\0';
-		snprintf(alert_msg, PATH_MAX + 4, "-1 %s", file_name);
-		send_syscheck_msg(alert_msg);
-		return (0);
-	}else{
-		merror("%s: Error accessing '%s'.", ARGV0, file_name);
-		return (-1);
-	}
+        if(errno == ENOTDIR) {
+            /*Deletion message sending*/
+            char alert_msg[PATH_MAX + 4];
+            alert_msg[PATH_MAX + 3] = '\0';
+            snprintf(alert_msg, PATH_MAX + 4, "-1 %s", file_name);
+            send_syscheck_msg(alert_msg);
+            return (0);
+        } else {
+            merror("%s: Error accessing '%s'.", ARGV0, file_name);
+            return (-1);
+        }
     }
 
     if (S_ISDIR(statbuf.st_mode)) {
@@ -157,10 +157,12 @@ static int read_file(const char *file_name, int opts, OSMatch *restriction)
                     alertdump = NULL;
                 }
             }
-	    if (!(record = calloc(1, sizeof (dbrecord))))
-		     merror("%s: ERROR: Unable to add file to db: %s", ARGV0, file_name);
-	    record->scanned = 1;
-            snprintf(record->alert_msg, 916, "%c%c%c%c%c%c%ld:%d:%d:%d:%s:%s",
+            if (!(record = calloc(1, sizeof (dbrecord)))) {
+                merror("%s: ERROR: Unable to add file to db: %s", ARGV0, file_name);
+            }
+            record->scanned = 1;
+            record->alert_msg[0] = '\0';
+            snprintf(record->alert_msg, OS_MAXSTR, "%c%c%c%c%c%c%ld:%d:%d:%d:%s:%s",
                      opts & CHECK_SIZE ? '+' : '-',
                      opts & CHECK_PERM ? '+' : '-',
                      opts & CHECK_OWNER ? '+' : '-',
@@ -179,9 +181,9 @@ static int read_file(const char *file_name, int opts, OSMatch *restriction)
             }
 
             /* Send the new checksum to the analysis server */
-            record->alert_msg[916] = '\0';
+            record->alert_msg[0] = '\0';
 
-            snprintf(record->alert_msg, 916, "%ld:%d:%d:%d:%s:%s %s",
+            snprintf(record->alert_msg, OS_MAXSTR, "%ld:%d:%d:%d:%s:%s %s",
                      opts & CHECK_SIZE ? (long)statbuf.st_size : 0,
                      opts & CHECK_PERM ? (int)statbuf.st_mode : 0,
                      opts & CHECK_OWNER ? (int)statbuf.st_uid : 0,
@@ -191,19 +193,22 @@ static int read_file(const char *file_name, int opts, OSMatch *restriction)
                      file_name);
             send_syscheck_msg(record->alert_msg);
         } else {
-	    record->scanned = 1;
+            record->scanned = 1;
 
             char c_sum[256 + 2];
 
             c_sum[0] = '\0';
             c_sum[256] = '\0';
 
+            record->alert_msg[0] = '\0';
+            record->alert_msg[OS_MAXSTR] = '\0';
+
             /* If it returns < 0, we have already alerted */
             if (c_read_file(file_name, record->alert_msg, c_sum) < 0) {
                 return (0);
             }
 
-            if (strcmp(c_sum, record->alert_msg + 6) != 0) {
+            if (strncmp(c_sum, record->alert_msg + 6, 256 + 2) != 0) {
                 /* Send the new checksum to the analysis server */
                 char *fullalert = NULL;
                 if (record->alert_msg[5] == 's' || record->alert_msg[5] == 'n') {
@@ -213,10 +218,10 @@ static int read_file(const char *file_name, int opts, OSMatch *restriction)
                         free(fullalert);
                         fullalert = NULL;
                     } else {
-                        snprintf(record->alert_msg, 916, "%s %s", c_sum, file_name);
+                        snprintf(record->alert_msg, OS_MAXSTR, "%s %s", c_sum, file_name);
                     }
                 } else {
-                    snprintf(record->alert_msg, 916, "%s %s", c_sum, file_name);
+                    snprintf(record->alert_msg, OS_MAXSTR, "%s %s", c_sum, file_name);
                 }
                 send_syscheck_msg(record->alert_msg);
             }
@@ -259,11 +264,9 @@ static int read_dir(const char *dir_name, int opts, OSMatch *restriction)
     }
 
     /* Should we check for NFS? */
-    if(syscheck.skip_nfs)
-    {
+    if(syscheck.skip_nfs) {
         is_nfs = IsNFS(dir_name);
-        if(is_nfs != 0)
-        {
+        if(is_nfs != 0) {
             // Error will be -1, and 1 means skipped
             return(is_nfs);
         }

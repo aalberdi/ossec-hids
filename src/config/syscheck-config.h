@@ -31,7 +31,7 @@
 typedef struct _dbrecord
 {
 	unsigned char scanned;
-	char alert_msg[916];
+	char alert_msg[OS_MAXSTR];
 }dbrecord;
 
 typedef struct _rtfim {

@@ -42,7 +42,7 @@ void *OSHash_Free(OSHash *self) __attribute__((nonnull));
  *  Iterate over hash elements and call fun on it
  *  If fun returns '-1', the element is removed
  */
-void OSHash_ForEach(OSHash *self, OSHash_Function fun);
+void OSHash_ForEach(OSHash *self, OSHash_Function hashfunc);
 
 /* Returns 0 on error
  * Returns 1 on duplicated key (not added)
